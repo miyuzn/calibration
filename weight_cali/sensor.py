@@ -1,6 +1,7 @@
 import struct
 import csv
 import numpy as np
+import pandas as pd
 
 coordinate_x_35_insole = [
     -40.6, -21.2, -6.5, 7.2, 17.3,
@@ -188,30 +189,40 @@ def save_sensor_data_to_csv(sensor_data_list, filename):
 # 读取数据函数
 # CSV -> 数据列表
 def read_sensor_data_from_csv(filepath, p_num=35):
-    sensor_data_list = []
-
-    with open(filepath, 'r', newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-
-        # 获取列名并检查是否有 Timestamp 列
-        fieldnames = reader.fieldnames
-        if fieldnames[0].startswith("//"):
-            # 如果第一列不是 Timestamp，则跳过一列重新读取
-            #next(reader)
-            reader = csv.DictReader(csvfile)
-            
-        for row in reader:
-            # Extract timestamp and its millisecond part
-            timestamp = float(row['Timestamp'])
-            # Extract sensor values
-            pressure_sensors = [int(row[f'P{i}']) for i in range(1, p_num + 1)]
-            magnetometer = [float(row[f'Mag_{axis}']) for axis in ['x', 'y', 'z']]
-            gyroscope = [float(row[f'Gyro_{axis}']) for axis in ['x', 'y', 'z']]
-            accelerometer = [float(row[f'Acc_{axis}']) for axis in ['x', 'y', 'z']]
-            
-            # Create a SensorData instance and add it to the list
-            sensor_data = SensorData(timestamp, pressure_sensors, magnetometer, gyroscope, accelerometer)
-            sensor_data_list.append(sensor_data)
+    # Read the CSV file into a pandas DataFrame
+    with open(filepath, 'r') as file:
+        first_line = file.readline()
+        
+    if first_line.startswith('"//'):
+        df = pd.read_csv(filepath, skiprows=1, low_memory=False)
+    else:
+        df = pd.read_csv(filepath, low_memory=False)
+    
+    
+    # Check if the Timestamp column exists
+    if 'Timestamp' not in df.columns:
+        raise ValueError("The CSV file must contain a 'Timestamp' column.")
+    
+    # Convert timestamp to float
+    df['Timestamp'] = df['Timestamp'].astype(float)
+    
+    # Extract sensor data
+    pressure_sensors = df[[f'P{i}' for i in range(1, p_num + 1)]].astype(int).values.tolist()
+    magnetometer = df[['Mag_x', 'Mag_y', 'Mag_z']].astype(float).values.tolist()
+    gyroscope = df[['Gyro_x', 'Gyro_y', 'Gyro_z']].astype(float).values.tolist()
+    accelerometer = df[['Acc_x', 'Acc_y', 'Acc_z']].astype(float).values.tolist()
+    
+    # Create a list of SensorData instances
+    sensor_data_list = [
+        SensorData(
+            timestamp=row['Timestamp'],
+            pressure_sensors=pressure_sensors[idx],
+            magnetometer=magnetometer[idx],
+            gyroscope=gyroscope[idx],
+            accelerometer=accelerometer[idx]
+        )
+        for idx, row in df.iterrows()
+    ]
 
     return sensor_data_list
 
