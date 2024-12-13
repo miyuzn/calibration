@@ -5,32 +5,35 @@ import matplotlib.pyplot as plt
 import os
 import re
 
-# 假设param.py中有如下参数定义
-# 请根据实际情况修改
+# Assume the following parameter definitions exist in param.py
+# Modify them based on actual requirements
 class param:
-    data_dir = './weight_cali/exp/1203/23l'          # 原始数据目录，存放500g-1.csv, 500g-2.csv, 1kg-1.csv, 1kg-2.csv等
-    output_csv = f'{data_dir}/output.csv'  # 最终输出回归结果文件
+    data_dir = './weight_cali/exp/1212/23r'          # Directory containing raw data files (e.g., 500g-1.csv, 500g-2.csv, etc.)
+    output_csv = f'{data_dir}/output.csv'  # Final output file for regression results
 
 ############################
-# 以下为原cali_act.py中的函数 #
+# Functions from cali_act.py #
 ############################
 
 def sma_filter(input, window_size=10):
     result = []
 
     if len(input) < window_size:
-        raise ValueError("SMA滤波器错误: 数据长度小于窗口长度.")
+        raise ValueError("SMA filter error: Data length is less than the window size.")
 
+    # Start phase: Window grows from 1 to window_size
     for i in range(0, window_size):
         window = input[:i + 1]
         sma = sum(window) / (i + 1)
         result.append(sma)
 
+    # Middle phase: Window size is fixed to window_size
     for i in range(window_size, len(input) - window_size):
         window = input[i:i + window_size]
         sma = sum(window) / window_size
         result.append(sma)
 
+    # End phase: Window shrinks from window_size down to 1
     for i in range(len(input) - window_size, len(input)):
         window = input[i:]
         sma = sum(window) / (len(input) - i)
@@ -62,6 +65,9 @@ def read_pressure_data_from_csv(filepath, p_num=25):
     return pressure_data_list
 
 def draw_pressure(pressure_data, title='Pressure Value', xlabel='Package Count', ylabel='Voltage Value'):
+    """
+    Visualize pressure sensor data.
+    """
     for i in range(len(pressure_data)):
         plt.plot(pressure_data[i], label=f'P{i+1}')
     plt.legend()
@@ -71,6 +77,9 @@ def draw_pressure(pressure_data, title='Pressure Value', xlabel='Package Count',
     plt.show()
 
 def find_activation_mean(data, percent_threshold=0.75, min_duration=150):
+    """
+    Find the activation mean for each sensor based on the threshold and minimum duration.
+    """
     num_sensors, num_samples = data.shape
     activation_means = []
     activation_durations = []
@@ -85,6 +94,7 @@ def find_activation_mean(data, percent_threshold=0.75, min_duration=150):
         activation_start = -1
         activation_end = -1
 
+        # Identify the start and end of the activation period
         for i in range(num_samples):
             if sensor_data[i] > threshold:
                 if activation_start == -1:
@@ -113,6 +123,9 @@ def find_activation_mean(data, percent_threshold=0.75, min_duration=150):
     return np.array(activation_means), np.array(activation_durations), np.array(activation_diffs)
 
 def calculate_activation_values(pressure_list):
+    """
+    Calculate activation values for sensors using SMA filtering and thresholding.
+    """
     pressure_sma = []
     for i in pressure_list:
         pressure_sma.append(sma_filter(i, 100))
@@ -124,6 +137,9 @@ def calculate_activation_values(pressure_list):
     return activation_real, activation_durations
 
 def v_list_to_r(v_list):
+    """
+    Convert voltage values (V) to resistance values (R) using reference parameters.
+    """
     v_ref = 0.312
     R1 = 5000
     for i in range(len(v_list)):
@@ -134,70 +150,44 @@ def v_list_to_r(v_list):
     return v_list
 
 ##############################
-# 以下为原cali_recur.py中的函数 #
+# Functions from cali_recur.py #
 ##############################
 
 def r_f_recur_calculate(data_df, output_csv):
-    # data_df格式：第一行R，第二行R, ... 最后两行为F对应的值
-    # 假设数据格式与原input.csv类似：第一行'R'只是标记行，后面是具体载荷对应的R数据行，再下面是F行
-    # 我们需要从data_df中区分出传感器列并进行拟合
-    # data_df的列格式为[0,1,2...,34]：传感器ID
-    # 行格式：
-    #   R
-    #   507g行(为该负载下R的值)
-    #   1009g行(为该负载下R的值)
-    #   F
-    #   507g行(对应F)
-    #   1009g行(对应F)
-
-    # 假设我们最终的数据结构为：
-    # index: [ 'R', '507g', '1009g', 'F', '507g', '1009g' ]   或简化成两组R和F数据
-    # 实际上，我们只需要两组R和F来进行回归：
-    # R行有两行数据：一行为低载荷对应R，一行为高载荷对应R
-    # F行有两行数据：一行为低载荷F，一行为高载荷F
-    # 列为各传感器
-    # 那么对于每个传感器，我们有(R1,F1)和(R2,F2)，拟合幂函数R = k * (F^alpha)
-    # 由于源代码是对于V和F的关系，我们这里是R和F的关系，需要按照r_f_recur_calculate中的逻辑拟合
-
-    # 提取数据
-    # 假设data_df顺序是：
-    # 行： ['R'] (标记), '507g', '1009g', ['F'](标记), '507g', '1009g'
-    # 我们跳过标记行，直接抓载荷行与力行。
+    """
+    Perform regression to calculate parameters for R = k * F^alpha.
+    """
     R_values_507g = data_df.loc['507g(R)'].values.astype(float)
     R_values_1009g = data_df.loc['1009g(R)'].values.astype(float)
     F_values_507g = data_df.loc['507g(F)'].values.astype(float)
     F_values_1009g = data_df.loc['1009g(F)'].values.astype(float)
 
-    # 开始拟合
     results = []
     for sensor_id in range(len(R_values_507g)):
         R = np.array([R_values_507g[sensor_id], R_values_1009g[sensor_id]])
         F = np.array([F_values_507g[sensor_id], F_values_1009g[sensor_id]])
 
         if len(R) == 2 and len(F) == 2:
-            # 取对数拟合直线 log(R) = alpha * log(F) + log(k)
             log_R = np.log(R)
             log_F = np.log(F)
 
             A = np.vstack([log_F, np.ones(len(log_F))]).T
             alpha, log_k = np.linalg.lstsq(A, log_R, rcond=None)[0]
             k = np.exp(log_k)
-            # sensor_id从0开始计数，传感器编号为sensor_id+1
             results.append({'Sensor': sensor_id+1, 'k': k, 'alpha': alpha})
 
     results_df = pd.DataFrame(results)
     results_df.to_csv(output_csv, index=False)
 
 ########################################
-# 以下为整合后的主流程，实现全自动化步骤 #
+# Main process for automation          #
 ########################################
 
 def process_files_for_load(directory, load_pattern, sensor_num=35):
     """
-    对给定负载（如'500g'或'1kg'）对应的多个文件（如500g-1.csv, 500g-2.csv）进行处理。
-    计算其激活电阻值R，并对同一负载下的多个文件求平均，最终返回平均R数组。
+    Process multiple files for the same load (e.g., 500g or 1kg).
+    Calculate the activation resistance (R) and return the average R values for the load.
     """
-    # 匹配类似 "500g-1.csv", "500g-2.csv" 等文件
     pattern = re.compile(fr"{load_pattern}-\d+\.csv$")
     R_list_per_file = []
 
@@ -207,72 +197,45 @@ def process_files_for_load(directory, load_pattern, sensor_num=35):
             pressure_time_list = np.array(read_pressure_data_from_csv(input_csv, sensor_num))
             pressure_list = pressure_time_list.T
             activation_real, _ = calculate_activation_values(pressure_list)
-            # 转换为电阻
-            activation_resistance = v_list_to_r(activation_real / 1000.0) # activation_real为mV,除1000得V
+            activation_resistance = v_list_to_r(activation_real / 1000.0)
             R_list_per_file.append(activation_resistance)
 
     if len(R_list_per_file) == 0:
-        raise ValueError(f"没有找到匹配{load_pattern}的文件。")
+        raise ValueError(f"No files matching {load_pattern} were found.")
 
-    # 对同负载下多组数据求平均
     R_list_per_file = np.array(R_list_per_file)
     avg_R = np.nanmean(R_list_per_file, axis=0)
     return avg_R
 
 
 def main():
-    # 假设我们有两个载荷：约500g和1kg，对应力值需要用户根据实验数据提供
-    # 此处使用题中给出的范例:
-    # 507g对应4.967N (接近500g)
-    # 1009g对应9.888N (接近1kg)
-    # 请根据实际实验数据修改
+    """
+    Main entry point for processing sensor data and performing regression.
+    """
     sensor_num = 35
 
-    # 尝试对500g与1kg文件进行处理（根据用户给出的例子修改）
-    # 在原始数据文件中可能是500g-1.csv, 500g-2.csv ... 1kg-1.csv, 1kg-2.csv ...
-    # 用户提供的act.csv中示例表明使用了507g与1009g，这里保持一致
-    
-    load1_pattern = "500g"  # 原文示例文件名，如"500g-1.csv"
-    load2_pattern = "1kg"   # 类似"1kg-1.csv"
-    # 实际上用户最终希望使用507g和1009g数据与力值，这里假设文件命名为500g-*.csv,1kg-*.csv
-    # 如果实际命名不一致，需要相应调整load_pattern或命名文件
+    # Patterns for file naming based on load
+    load1_pattern = "500g"
+    load2_pattern = "1kg"
 
     R_500g = process_files_for_load(param.data_dir, load1_pattern, sensor_num=sensor_num)
     R_1kg  = process_files_for_load(param.data_dir, load2_pattern, sensor_num=sensor_num)
 
-    # 对应的F值（用户给定）
     F_500g = 4.967
     F_1kg = 9.888
 
-    # 组织数据成DataFrame，格式类似原input.csv
-    # 我们需要两行表示R（500g和1kg对应的R），两行表示F（500g和1kg对应的F）
-    # 行索引我们用 '507g(R)', '1009g(R)', '507g(F)', '1009g(F)'
-    # 列为传感器索引0到34
     sensors = list(range(sensor_num))
     data = {
-        # R行
         '507g(R)': R_500g,
         '1009g(R)': R_1kg,
-        # F行
         '507g(F)': np.array([F_500g]*sensor_num),
         '1009g(F)': np.array([F_1kg]*sensor_num)
     }
 
-    # 转置使列为传感器，行为上述标签
     df_for_recur = pd.DataFrame(data, index=sensors).T
-
-    # df_for_recur现在行是'507g(R)'等，列是传感器ID
-    # 为了与回归函数统一处理，将DataFrame行索引设置如上，并传入回归函数
-    # 回归函数需要从中提取R和F数据
-    # 当前df_for_recur的结构：
-    # 行： 507g(R), 1009g(R), 507g(F), 1009g(F)
-    # 列：0,1,2,...,34
-    # 正好可以直接使用拟合函数进行处理
-
-    # 执行回归计算并输出结果
     r_f_recur_calculate(df_for_recur, param.output_csv)
 
-    print("回归计算完成，结果已输出到：", param.output_csv)
+    print("Regression completed. Results saved to:", param.output_csv)
 
 
 if __name__ == "__main__":

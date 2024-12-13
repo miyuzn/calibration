@@ -49,16 +49,14 @@ class SensorData:
                 R = self.pressure_sensors[i]
                 if R != float('inf'):
                     res = (R / k) ** (1 / alpha)
-                    # 设置上限值为20
-                    if res > 20:
-                        res = 20
-                    if res > 1e-2:
-                        self.pressure_sensors[i] = res
+                    if res < 1e-2:
+                        self.pressure_sensors[i] = 0  # 处理压力值过小的情况
+                    elif res > 50:
+                        self.pressure_sensors[i] = 50 # 处理异常值或超过量程的情况
                     else:
-                        self.pressure_sensors[i] = 0  # 处理过小值
+                        self.pressure_sensors[i] = res
                 else:
-                    self.pressure_sensors[i] = 0  # 处理无限大值
-
+                    self.pressure_sensors[i] = 0  # 处理电阻无限大的情况
 
 
 # 传感器数据
@@ -197,7 +195,7 @@ def read_sensor_data_from_csv(filepath, p_num=35):
 
         # 获取列名并检查是否有 Timestamp 列
         fieldnames = reader.fieldnames
-        if fieldnames[0] != 'Timestamp':
+        if fieldnames[0].startswith("//"):
             # 如果第一列不是 Timestamp，则跳过一列重新读取
             #next(reader)
             reader = csv.DictReader(csvfile)
