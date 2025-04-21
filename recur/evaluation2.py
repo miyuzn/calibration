@@ -25,14 +25,16 @@ def load_data_and_save_intermediate(ori_data_dir, output_dir, sensor_num):
         for i in range(3):
             pressure_data = pressure_data_list[i]
             pressure_values = pressure_data.iloc[:, 0].values
-            pressure_time = 0.5 * np.arange(len(pressure_values))
+            pressure_time = 0.1 * np.arange(len(pressure_values))
 
             resistance_data = resistance_data_list[i].iloc[:, [1, 3]]
             resistance_data.columns = ['Time', 'Resistance']
             time_parts = resistance_data['Time'].str.split(':', expand=True).astype(float)
-            resistance_time = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2]
+            if time_parts.shape[1] == 2:
+                resistance_time = time_parts[0] * 60 + time_parts[1]
+            else:
+                resistance_time = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2]
             resistance_values = resistance_data['Resistance'].values
-            
             # 将小于100欧姆的电阻值置为10e6
             resistance_values[resistance_values < 100] = 10e6
 
@@ -52,8 +54,8 @@ def load_data_and_save_intermediate(ori_data_dir, output_dir, sensor_num):
 
         # 生成固定的统一压力点
         min_pressure = max(min(aligned_datasets[i]['Pressure'].min() for i in range(3)), 0)
-        max_pressure = min(max(aligned_datasets[i]['Pressure'].max() for i in range(3)), 100)
-        common_pressure_points = np.linspace(min_pressure, max_pressure, num=50)  # 生成50个压力点
+        max_pressure = min(max(aligned_datasets[i]['Pressure'].max() for i in range(3)), 450)
+        common_pressure_points = np.linspace(min_pressure, max_pressure, num=100)  # 生成50个压力点
 
         # 对每组数据进行插值，使它们与统一的压力点对齐
         interpolated_datasets = []
@@ -163,9 +165,9 @@ sensor_num = param.sensor_num
 # 加载数据并保存中间结果
 sensor_data = load_data_and_save_intermediate(ori_data_dir, output_dir, sensor_num)
 
-# 加载recur_result.csv文件
-recur_result_path = os.path.join(current_dir, input_path)
-recur_result_df = pd.read_csv(recur_result_path)
+# # 加载recur_result.csv文件
+# recur_result_path = os.path.join(current_dir, input_path)
+# recur_result_df = pd.read_csv(recur_result_path)
 
-# 执行计算并输出结果
-calculate_percentage_errors(sensor_data, recur_result_df, result_path)
+# # 执行计算并输出结果
+# calculate_percentage_errors(sensor_data, recur_result_df, result_path)

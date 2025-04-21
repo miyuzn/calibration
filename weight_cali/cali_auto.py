@@ -8,7 +8,7 @@ import re
 # Assume the following parameter definitions exist in param.py
 # Modify them based on actual requirements
 class param:
-    data_dir = './weight_cali/exp/1212/23r'          # Directory containing raw data files (e.g., 500g-1.csv, 500g-2.csv, etc.)
+    data_dir = './weight_cali/exp/0416/25r'          # Directory containing raw data files (e.g., 500g-1.csv, 500g-2.csv, etc.)
     output_csv = f'{data_dir}/output.csv'  # Final output file for regression results
 
 ############################

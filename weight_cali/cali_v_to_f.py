@@ -12,7 +12,7 @@ def load_fitting_parameters(recur_results_csv):
 
 # Main function: batch process CSV files in a directory
 def batch_process_csv_files():
-    exp = './weight_test/1105'
+    exp = './weight_cali/0123-glove'
     recur_results_csv = param.output_csv  # Specify your fitting parameters CSV file here
 
     # Load fitting parameters once
